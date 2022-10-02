@@ -43,7 +43,7 @@ func main() {
 	pass = flag.String("pass", "", "password to use when connecting to MQTT")
 	clientId = flag.String("clientid", "mqtt-cec-bridge", "client ID to use when connecting to MQTT")
 	prefix = flag.String("prefix", "media", "the bridge will listen to the {prefix}/cec/+/cmd topic")
-	refresh = flag.Int("refresh", 5, "amount of seconds between polling device power states")
+	refresh = flag.Int("refresh", 10, "amount of seconds between polling device power states")
 
 	flag.Parse()
 
