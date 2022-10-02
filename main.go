@@ -30,7 +30,7 @@ var (
 	cecClient  *cec.Connection
 	mqttClient *mqtt.ConnectionManager
 
-	activeDevices [16]bool = [16]bool{}
+	monitoredDevices []int
 
 	err error
 )
@@ -44,6 +44,7 @@ func main() {
 	clientId = flag.String("clientid", "mqtt-cec-bridge", "client ID to use when connecting to MQTT")
 	prefix = flag.String("prefix", "media", "the bridge will listen to the {prefix}/cec/+/cmd topic")
 	refresh = flag.Int("refresh", 10, "amount of seconds between polling device power states")
+	monitor := flag.String("monitor", "0", "comma separated list of device IDs to poll power status")
 
 	flag.Parse()
 
@@ -73,6 +74,15 @@ func main() {
 	mqttClient, err = mqtt.NewConnection(ctx, mqttOpts)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	monitoredDevices = []int{}
+	for _, strId := range strings.Split(*monitor, ",") {
+		id, err := strconv.Atoi(strId)
+		if err != nil {
+			log.Fatalf("Error parsing devices to monitor: %s", err)
+		}
+		monitoredDevices = append(monitoredDevices, id)
 	}
 
 	cecClient, err = cec.Open("", "cec-mqtt", false)
@@ -131,26 +141,22 @@ func cecRefresh(ctx context.Context, wg *sync.WaitGroup) {
 	for {
 		select {
 		case <-time.After(time.Duration(*refresh) * time.Second):
-			activeDevices = cecClient.GetActiveDevices()
+			for _, address := range monitoredDevices {
+				state := ""
+				switch cecClient.GetDevicePowerStatus(address) {
+				case "on":
+					state = "on"
+				case "standby":
+					state = "off"
+				}
 
-			for address, active := range activeDevices {
-				if active {
-					state := ""
-					switch cecClient.GetDevicePowerStatus(address) {
-					case "on":
-						state = "on"
-					case "standby":
-						state = "off"
-					}
-
-					if state != "" {
-						mqttClient.Publish(context.Background(), &paho.Publish{
-							QoS:     0,
-							Topic:   fmt.Sprintf("%s/cec/%d/state", *prefix, address),
-							Payload: []byte(state),
-							Retain:  true,
-						})
-					}
+				if state != "" {
+					mqttClient.Publish(context.Background(), &paho.Publish{
+						QoS:     0,
+						Topic:   fmt.Sprintf("%s/cec/%d/state", *prefix, address),
+						Payload: []byte(state),
+						Retain:  true,
+					})
 				}
 			}
 		case <-ctx.Done():
