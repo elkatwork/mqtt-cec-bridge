@@ -75,7 +75,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	cecClient, err = cec.Open("", "cec-mqtt", true)
+	cecClient, err = cec.Open("", "cec-mqtt", false)
 	if err != nil {
 		log.Fatalf("Error initializing CEC: %s", err)
 	}
