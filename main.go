@@ -54,10 +54,18 @@ func main() {
 		ConnectRetryDelay: 1 * time.Second,
 		ConnectTimeout:    1 * time.Second,
 		OnConnectionUp:    subscribe,
-		OnConnectError:    connectionError,
+		OnConnectError:    func(err error) { log.Fatalf("MQTT connect error: %s", err) },
 		ClientConfig: paho.ClientConfig{
-			ClientID: *clientId,
-			Router:   paho.NewSingleHandlerRouter(handleMQTTMessage),
+			ClientID:      *clientId,
+			Router:        paho.NewSingleHandlerRouter(handleMQTTMessage),
+			OnClientError: func(err error) { log.Errorf("server requested disconnect: %s", err) },
+			OnServerDisconnect: func(d *paho.Disconnect) {
+				if d.Properties != nil {
+					log.Errorf("server requested disconnect: %s", d.Properties.ReasonString)
+				} else {
+					log.Errorf("server requested disconnect; reason code: %d", d.ReasonCode)
+				}
+			},
 		},
 	}
 	mqttOpts.SetUsernamePassword(*user, []byte(*pass))
