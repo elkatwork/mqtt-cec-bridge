@@ -3,8 +3,8 @@ module github.com/elkatwork/mqtt-cec-bridge
 go 1.19
 
 require (
+	github.com/chbmuc/cec v0.0.0-20220821081834-cbe6deb76d7c
 	github.com/eclipse/paho.golang v0.10.0
-	github.com/elkatwork/cec v0.0.0-20221002134615-6d5d184d518c
 	github.com/sirupsen/logrus v1.9.0
 )
 

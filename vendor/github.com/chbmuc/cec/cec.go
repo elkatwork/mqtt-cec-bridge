@@ -52,15 +52,13 @@ var keyList = map[int]string{0x00: "Select", 0x01: "Up", 0x02: "Down", 0x03: "Le
 	0x64: "StopFunction", 0x65: "Mute",
 	0x66: "RestoreVolume", 0x67: "Tune", 0x68: "SelectMedia",
 	0x69: "SelectAvInput", 0x6A: "SelectAudioInput", 0x6B: "PowerToggle",
-	0x6C: "PowerOff", 0x6D: "PowerOn", 0x71: "Blue", 0x72: "Red", 0x73: "Green",
+	0x6C: "PowerOff", 0x6D: "PowerOn", 0x71: "Blue", 0X72: "Red", 0x73: "Green",
 	0x74: "Yellow", 0x75: "F5", 0x76: "Data", 0x91: "AnReturn",
 	0x96: "Max"}
 
 // Open - open a new connection to the CEC device with the given name
 func Open(name string, deviceName string, printLogs bool) (*Connection, error) {
-	c := Connection{
-		MsgLog: logChan,
-	}
+	c := new(Connection)
 
 	var err error
 
@@ -82,7 +80,7 @@ func Open(name string, deviceName string, printLogs bool) (*Connection, error) {
 		return nil, err
 	}
 
-	return &c, nil
+	return c, nil
 }
 
 // Key - send key press and release commands (hold key for 10ms) to the device

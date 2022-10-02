@@ -7,15 +7,14 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/chbmuc/cec"
 	mqtt "github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
-	"github.com/elkatwork/cec"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -25,9 +24,12 @@ var (
 	pass     *string
 	clientId *string
 	prefix   *string
+	refresh  *int
 
 	cecClient  *cec.Connection
 	mqttClient *mqtt.ConnectionManager
+
+	activeDevices [16]bool = [16]bool{}
 
 	err error
 )
@@ -40,6 +42,7 @@ func main() {
 	pass = flag.String("pass", "", "password to use when connecting to MQTT")
 	clientId = flag.String("clientid", "mqtt-cec-bridge", "client ID to use when connecting to MQTT")
 	prefix = flag.String("prefix", "media", "the bridge will listen to the {prefix}/cec/+/cmd topic")
+	refresh = flag.Int("refresh", 5, "amount of seconds between polling device power states")
 
 	flag.Parse()
 
@@ -66,12 +69,7 @@ func main() {
 		log.Fatalf("Error initializing CEC: %s", err)
 	}
 
-	go func() {
-		for {
-			msg := <-cecClient.MsgLog
-			handleCECMessage(msg)
-		}
-	}()
+	go cecRefresh()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
@@ -113,12 +111,33 @@ func handleMQTTMessage(m *paho.Publish) {
 	}
 }
 
-func handleCECMessage(msg string) {
-	log.Debugf("CEC: %s", msg)
+func cecRefresh() {
+	for {
+		activeDevices = cecClient.GetActiveDevices()
 
-	re := regexp.MustCompile(`>> ([0-9a-f])[0-9a-f]:90:([0-9a-f]{2})`)
-	m := re.FindAllStringSubmatch(msg, -1)
-	log.Infof("cec match: %v", m)
+		for address, active := range activeDevices {
+			if active {
+				state := ""
+				switch cecClient.GetDevicePowerStatus(address) {
+				case "on":
+					state = "on"
+				case "standby":
+					state = "off"
+				}
+
+				if state != "" {
+					mqttClient.Publish(context.Background(), &paho.Publish{
+						QoS:     0,
+						Topic:   fmt.Sprintf("%s/cec/%d/state", *prefix, address),
+						Payload: []byte(state),
+						Retain:  true,
+					})
+				}
+			}
+		}
+
+		time.Sleep(time.Duration(*refresh) * time.Second)
+	}
 }
 
 func brokerParamToURLs(brokers string) []*url.URL {
