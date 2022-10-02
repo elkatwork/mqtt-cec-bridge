@@ -1,11 +1,11 @@
-# github.com/chbmuc/cec v0.0.0-20220821081834-cbe6deb76d7c
-## explicit
-github.com/chbmuc/cec
 # github.com/eclipse/paho.golang v0.10.0
 ## explicit; go 1.15
 github.com/eclipse/paho.golang/autopaho
 github.com/eclipse/paho.golang/packets
 github.com/eclipse/paho.golang/paho
+# github.com/elkatwork/cec v0.0.0-20221002134615-6d5d184d518c
+## explicit
+github.com/elkatwork/cec
 # github.com/gorilla/websocket v1.4.2
 ## explicit; go 1.12
 github.com/gorilla/websocket

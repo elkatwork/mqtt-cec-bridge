@@ -43,6 +43,7 @@ import (
 
 // Connection class
 type Connection struct {
+	MsgLog     chan string
 	connection C.libcec_connection_t
 }
 

@@ -7,13 +7,15 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/chbmuc/cec"
 	mqtt "github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
+	"github.com/elkatwork/cec"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -24,7 +26,10 @@ var (
 	clientId *string
 	prefix   *string
 
-	cecClient *cec.Connection
+	cecClient  *cec.Connection
+	mqttClient *mqtt.ConnectionManager
+
+	err error
 )
 
 func main() {
@@ -46,12 +51,12 @@ func main() {
 		OnConnectError:    connectionError,
 		ClientConfig: paho.ClientConfig{
 			ClientID: *clientId,
-			Router:   paho.NewSingleHandlerRouter(handleMsg),
+			Router:   paho.NewSingleHandlerRouter(handleMQTTMessage),
 		},
 	}
 	mqttOpts.SetUsernamePassword(*user, []byte(*pass))
 
-	_, err := mqtt.NewConnection(context.Background(), mqttOpts)
+	mqttClient, err = mqtt.NewConnection(context.Background(), mqttOpts)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -60,6 +65,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing CEC: %s", err)
 	}
+
+	go func() {
+		for {
+			msg := <-cecClient.MsgLog
+			handleCECMessage(msg)
+		}
+	}()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
@@ -82,14 +94,31 @@ func connectionError(err error) {
 	log.Fatalf("MQTT connection error: %s", err)
 }
 
-func handleMsg(m *paho.Publish) {
-	log.Infof("received msg on topic '%s': %s", m.Topic, m.Payload)
+func handleMQTTMessage(m *paho.Publish) {
+	topic := m.Topic
 	payload := string(m.Payload)
-	if payload == "on" {
-		cecClient.PowerOn(0)
-	} else if payload == "off" {
-		cecClient.Standby(0)
+	log.Infof("received msg on topic '%s': %s", topic, payload)
+
+	topicLevels := strings.Split(topic, "/")
+	address, err := strconv.Atoi(topicLevels[len(topicLevels)-2])
+	if err != nil {
+		log.Errorf("Error handling MQTT message: %s", err)
+		return
 	}
+
+	if payload == "on" {
+		cecClient.PowerOn(address)
+	} else if payload == "off" {
+		cecClient.Standby(address)
+	}
+}
+
+func handleCECMessage(msg string) {
+	log.Debugf("CEC: %s", msg)
+
+	re := regexp.MustCompile(`>> ([0-9a-f])[0-9a-f]:90:([0-9a-f]{2})`)
+	m := re.FindAllStringSubmatch(msg, -1)
+	log.Infof("cec match: %v", m)
 }
 
 func brokerParamToURLs(brokers string) []*url.URL {
