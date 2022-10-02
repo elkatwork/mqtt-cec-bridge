@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -46,6 +47,8 @@ func main() {
 
 	flag.Parse()
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	mqttOpts := mqtt.ClientConfig{
 		BrokerUrls:        brokerParamToURLs(*brokers),
 		ConnectRetryDelay: 1 * time.Second,
@@ -59,7 +62,7 @@ func main() {
 	}
 	mqttOpts.SetUsernamePassword(*user, []byte(*pass))
 
-	mqttClient, err = mqtt.NewConnection(context.Background(), mqttOpts)
+	mqttClient, err = mqtt.NewConnection(ctx, mqttOpts)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,11 +72,16 @@ func main() {
 		log.Fatalf("Error initializing CEC: %s", err)
 	}
 
-	go cecRefresh()
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go cecRefresh(ctx, &wg)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
+
+	cancel()
+	wg.Wait()
 }
 
 func subscribe(cm *mqtt.ConnectionManager, ca *paho.Connack) {
@@ -111,32 +119,37 @@ func handleMQTTMessage(m *paho.Publish) {
 	}
 }
 
-func cecRefresh() {
+func cecRefresh(ctx context.Context, wg *sync.WaitGroup) {
 	for {
-		activeDevices = cecClient.GetActiveDevices()
+		select {
+		case <-time.After(time.Duration(*refresh) * time.Second):
+			activeDevices = cecClient.GetActiveDevices()
 
-		for address, active := range activeDevices {
-			if active {
-				state := ""
-				switch cecClient.GetDevicePowerStatus(address) {
-				case "on":
-					state = "on"
-				case "standby":
-					state = "off"
-				}
+			for address, active := range activeDevices {
+				if active {
+					state := ""
+					switch cecClient.GetDevicePowerStatus(address) {
+					case "on":
+						state = "on"
+					case "standby":
+						state = "off"
+					}
 
-				if state != "" {
-					mqttClient.Publish(context.Background(), &paho.Publish{
-						QoS:     0,
-						Topic:   fmt.Sprintf("%s/cec/%d/state", *prefix, address),
-						Payload: []byte(state),
-						Retain:  true,
-					})
+					if state != "" {
+						mqttClient.Publish(context.Background(), &paho.Publish{
+							QoS:     0,
+							Topic:   fmt.Sprintf("%s/cec/%d/state", *prefix, address),
+							Payload: []byte(state),
+							Retain:  true,
+						})
+					}
 				}
 			}
+		case <-ctx.Done():
+			cecClient.Destroy()
+			wg.Done()
+			return
 		}
-
-		time.Sleep(time.Duration(*refresh) * time.Second)
 	}
 }
 
